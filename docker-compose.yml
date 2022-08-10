@@ -1,0 +1,125 @@
+version: '3'
+networks:
+  app-woub:
+    driver: bridge
+
+services:
+  node:
+    image: broadcast-echo-server
+    build:
+      context: .
+      dockerfile: ./docker/node/Dockerfile
+    container_name: woub_node
+    restart: unless-stopped
+    tty: true
+    volumes:
+      - ./src:/var/www
+    ports:
+      - "6001:6001"
+    links:
+      - redis
+      - memcached
+      - php
+    networks:
+      - app-woub
+
+  php:
+    build:
+      context: .
+      dockerfile: ./docker/php/Dockerfile
+    container_name: woub_php
+    restart: unless-stopped
+    tty: true
+    environment:
+      SERVICE_NAME: app
+      SERVICE_TAGS: dev
+    working_dir: /var/www
+    volumes:
+      - ./src/:/var/www
+      - ./docker/php/php.ini:/usr/local/etc/php/conf.d/local.ini
+    links:
+      - redis
+      - memcached
+    networks:
+      - app-woub
+
+  webserver:
+    image: nginx:alpine
+    container_name: woub_nginx
+    restart: unless-stopped
+    tty: true
+    ports:
+      - "8094:80"
+    volumes:
+      - ./src/:/var/www
+      - ./docker/nginx/conf.d/:/etc/nginx/conf.d/
+      - ./docker/nginx/log/:/var/log/nginx
+    networks:
+      - app-woub
+    links:
+      - redis
+      - memcached
+      - php
+      - node
+
+  mariadbWoub:
+    image: mariadb/server:10.3
+    container_name: woub_db
+    tty: true
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: secret
+      MARIADB_DATABASE: woub
+      MARIADB_USER: dev
+      MARIADB_PASSWORD: secret
+      MARIADB_INITDB_SKIP_TZINFO: 1
+      MARIADB_ALLOW_EMPTY_PASSWORD: 1
+    ports:
+      - "33064:3306"
+    networks:
+      - app-woub
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: woub_pma
+    links:
+      - mariadbWoub
+    environment:
+      PMA_HOST: mariadbWoub
+      PMA_USER: root
+      PMA_PASSWORD: secret
+      UPLOAD_LIMIT: 1G
+    restart: always
+    ports:
+      - "8086:80"
+    networks:
+      - app-woub
+
+  memcached:
+    image: "memcached:latest"
+    container_name: woub_memcached
+    tty: true
+    restart: unless-stopped
+    ports:
+      - '11211:11211'
+    networks:
+      - app-woub
+
+  redis:
+    image: "redis:latest"
+    container_name: woub_redis
+    tty: true
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    environment:
+      ALLOW_EMPTY_PASSWORD: 1
+    volumes:
+      - ./docker/cache:/data
+    networks:
+      - app-woub
+
+
+
+
+
